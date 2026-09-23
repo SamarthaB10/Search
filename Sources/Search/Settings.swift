@@ -205,6 +205,10 @@ struct SettingsPanel: View {
                 Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph)
             }
             Rule()
+            Line("Tab groups", "Put open tabs together, then collapse them to a label") {
+                Switch(on: $prefs.tabGroups)
+            }
+            Rule()
             Line("Sleep tabs you aren't using", "After half an hour away they come back where you left them. Pinned tabs, sound, calls and anything typed stay awake.") {
                 Switch(on: $prefs.sleepsTabs)
             }

@@ -43,6 +43,10 @@ final class Preferences: ObservableObject {
     @Published var sidebar: Bool {
         didSet { store.set(sidebar, forKey: "sidebar") }
     }
+    /// Tab groups keep the default window as quiet as it was.
+    @Published var tabGroups: Bool {
+        didSet { store.set(tabGroups, forKey: "tabs.groups") }
+    }
     /// How wide the column is. Pulled by its edge, and remembered.
     @Published var sideWidth: CGFloat {
         didSet { store.set(Double(sideWidth), forKey: "sidebar.width") }
@@ -134,6 +138,7 @@ final class Preferences: ObservableObject {
         NSApp.appearance = chosen.appearance
         sidebar = store.object(forKey: "sidebar") as? Bool
             ?? (store.string(forKey: "manner") == "side")
+        tabGroups = store.bool(forKey: "tabs.groups")
         let width = store.object(forKey: "sidebar.width") as? Double ?? Double(Metrics.side)
         sideWidth = min(Metrics.sideMax, max(Metrics.sideMin, CGFloat(width)))
         glyph = store.string(forKey: "glyph").flatMap(Glyph.init) ?? .letters

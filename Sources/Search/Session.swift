@@ -5,15 +5,17 @@ import Foundation
 // page or in the history file next door.
 
 enum Session {
-    struct Entry: Codable {
+    struct Entry: Codable, Equatable {
         var url: String
         var title: String
         var pin: String?
+        var groupID: UUID? = nil
     }
 
     struct Shape: Codable {
         var tabs: [Entry]
         var active: Int
+        var groups: [TabGroup]? = nil
     }
 
     /// The first space's is the session there always was; each other space

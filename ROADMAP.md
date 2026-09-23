@@ -33,7 +33,6 @@ don't build it twice.
 - [ ] **Driving Search from an agent** (an MCP server over the bench), for automation and testing. *(X, [#14](https://github.com/driceroland/Search/pull/14))*
 - [ ] **Web push notifications**, as far as WebKit lets an app other than Safari have them. *(X)*
 - [ ] **Smoother scrolling with a mouse wheel.** To look into. *(X)*
-- [ ] **Tab groups.** To weigh against keeping the sidebar quiet. *(X)*
 
 ## Not on the list, for now
 

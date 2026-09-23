@@ -133,7 +133,7 @@ struct SideBar: View {
         let pinRows = pins == 0 ? 0 : (pins + cols - 1) / cols
         let pinBlock = pinRows == 0 ? 0
             : CGFloat(pinRows) * pinHeight + CGFloat(pinRows - 1) * SideBar.pinGap + 10
-        let loose = CGFloat(browser.tabs.count - pins) * (SideBar.row + SideBar.gap)
+        let loose = CGFloat(browser.visibleItems.count - pins) * (SideBar.row + SideBar.gap)
         return Metrics.strip + pinBlock + loose + SideBar.row + 8
     }
 
@@ -270,7 +270,14 @@ struct SideBar: View {
         VStack(spacing: SideBar.gap) {
             // See the grid: the drag is measured in the column's space, not
             // the row's, so a row that has just moved keeps its bearings.
-            ForEach(Array(looseTabs.enumerated()), id: \.element.id) { index, tab in
+            ForEach(Array(browser.visibleItems.filter { item in
+                if case .tab(let tab) = item { return tab.pin == nil }
+                return true
+            }.enumerated()), id: \.element.id) { index, item in
+                switch item {
+                case .group(let group):
+                    GroupHeader(browser: browser, group: group, vertical: true)
+                case .tab(let tab):
                 let step = SideBar.row + SideBar.gap
                 let held = dragging == tab.id
                 SideRow(
@@ -281,6 +288,7 @@ struct SideBar: View {
                     pill: pill,
                     close: { browser.close(tab) }
                 )
+                .modifier(GroupMemberMark(group: browser.prefs.tabGroups ? browser.group(for: tab) : nil, vertical: true))
                 .offset(y: held ? travel - CGFloat(index - from) * step : 0)
                 // Under the hand exactly. Its place in the row springs when it
                 // passes another tab, and the offset springs back the same way —
@@ -290,7 +298,9 @@ struct SideBar: View {
                 .transaction { if held { $0.animation = nil } }
                 .zIndex(held ? 1 : 0)
                 .shadow(color: .black.opacity(held ? 0.14 : 0), radius: 12, y: 4)
-                .gesture(reorder(tab: tab, index: index, step: step))
+                .modifier(TabGroupTarget(browser: browser, tab: tab, enabled: browser.prefs.tabGroups))
+                .gesture(reorder(tab: tab, index: index, step: step), including: browser.prefs.tabGroups ? .none : .all)
+                }
             }
         }
         .coordinateSpace(name: "rows")
@@ -326,6 +336,7 @@ struct SideBar: View {
     private var newTab: some View {
         Quiet(icon: "plus", title: "New tab", height: SideBar.row) { browser.newTab() }
             .padding(.top, SideBar.gap)
+            .modifier(UngroupDropTarget(browser: browser))
     }
 
     /// One small door at the bottom: the settings.

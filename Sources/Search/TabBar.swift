@@ -48,7 +48,12 @@ struct TabBar: View {
                     ScrollViewReader { reader in
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: Metrics.tabGap) {
-                                ForEach(Array(browser.tabs.enumerated()), id: \.element.id) { index, tab in
+                                ForEach(Array(browser.visibleItems.enumerated()), id: \.element.id) { index, item in
+                                    switch item {
+                                    case .group(let group):
+                                        GroupHeader(browser: browser, group: group)
+                                            .id(item.id)
+                                    case .tab(let tab):
                                     // A pinned square moves among pinned squares, a title
                                     // among titles: each has its own stride.
                                     let step = (tab.pin != nil ? Metrics.pinWidth : width(in: geo.size.width)) + Metrics.tabGap
@@ -63,6 +68,7 @@ struct TabBar: View {
                                         pill: pill,
                                         close: { browser.close(tab) }
                                     )
+                                    .modifier(GroupMemberMark(group: browser.prefs.tabGroups ? browser.group(for: tab) : nil, vertical: false))
                                     // The row reflows around it while the pill itself keeps
                                     // up with the hand: what it has travelled, less the
                                     // ground its new place has already given it.
@@ -75,8 +81,10 @@ struct TabBar: View {
                                     .transaction { if held { $0.animation = nil } }
                                     .zIndex(held ? 1 : 0)
                                     .shadow(color: .black.opacity(held ? 0.14 : 0), radius: 12, y: 4)
-                                    .gesture(reorder(tab: tab, index: index, step: step))
-                                    .id(tab.id)
+                                    .modifier(TabGroupTarget(browser: browser, tab: tab, enabled: browser.prefs.tabGroups && tab.pin == nil))
+                                    .gesture(reorder(tab: tab, index: index, step: step), including: browser.prefs.tabGroups && tab.pin == nil ? .none : .all)
+                                    .id(item.id)
+                                    }
                                 }
                             }
                             .frame(height: Metrics.strip)
@@ -106,12 +114,14 @@ struct TabBar: View {
                     }
                     .buttonStyle(.plain)
                     .onHover { plussed = $0 }
-                    .opacity(nearby ? 1 : 0)
+                    .modifier(UngroupDropTarget(browser: browser))
+                    .opacity(nearby ? 1 : (browser.prefs.tabGroups ? 0.4 : 0))
                     .scaleEffect(nearby ? 1 : 0.7, anchor: .leading)
-                    .allowsHitTesting(nearby)
+                    .allowsHitTesting(nearby || browser.prefs.tabGroups)
                     .animation(Motion.settle, value: nearby)
 
                     Spacer(minLength: 0)
+                        .modifier(UngroupDropTarget(browser: browser))
 
                     // Back, forward, reload, and the bookmarks, at the far end
                     // of the row. The dropdown hangs from the last one.
@@ -185,7 +195,8 @@ struct TabBar: View {
     /// when the window first shows it, on the strip's spring when you pick
     /// another. A turn of the run loop later, so the run has been laid out.
     private func reveal(_ reader: ScrollViewProxy, in strip: CGFloat, gliding: Bool = false) {
-        guard overflowing(in: strip), let id = browser.activeID else { return }
+        guard overflowing(in: strip), let active = browser.active else { return }
+        let id = browser.visibleID(for: active)
         DispatchQueue.main.async {
             if gliding {
                 withAnimation(Motion.glide) { reader.scrollTo(id) }
@@ -210,9 +221,11 @@ struct TabBar: View {
     private func content(in strip: CGFloat) -> CGFloat {
         let each = width(in: strip)
         let pinned = CGFloat(browser.pinnedCount)
-        let loose = CGFloat(browser.tabs.count) - pinned
-        var total = pinned * Metrics.pinWidth + loose * each
-            + CGFloat(max(0, browser.tabs.count - 1)) * Metrics.tabGap
+        let items = browser.visibleItems
+        let loose = CGFloat(items.filter { if case .tab(let tab) = $0 { return tab.pin == nil }; return false }.count)
+        let groups = CGFloat(items.filter { if case .group = $0 { return true }; return false }.count)
+        var total = pinned * Metrics.pinWidth + loose * each + groups * 120
+            + CGFloat(max(0, items.count - 1)) * Metrics.tabGap
         if let id = browser.editingTab, let tab = browser.tabs.first(where: { $0.id == id }) {
             total += min(340, strip - Metrics.lights - 12) - (tab.pin != nil ? Metrics.pinWidth : each)
         }
@@ -237,10 +250,11 @@ struct TabBar: View {
     /// their room off the top.
     private func width(in strip: CGFloat) -> CGFloat {
         let pinned = CGFloat(browser.pinnedCount)
-        let loose = CGFloat(browser.tabs.count) - pinned
+        let loose = CGFloat(browser.visibleItems.filter { if case .tab(let tab) = $0 { return tab.pin == nil }; return false }.count)
         guard loose > 0 else { return Metrics.tabWidth }
         let spent = pinned * Metrics.pinWidth
-            + CGFloat(max(0, browser.tabs.count - 1)) * Metrics.tabGap
+            + CGFloat(max(0, browser.visibleItems.count - 1)) * Metrics.tabGap
+            + CGFloat(browser.visibleItems.filter { if case .group = $0 { return true }; return false }.count) * 120
         return max(Metrics.tabMinWidth, min(Metrics.tabWidth, (room(in: strip) - spent) / loose))
     }
 }
@@ -618,6 +632,22 @@ struct TabMenu: View {
         } else {
             Button("Change Letter") { browser.editLetter(tab) }
             Button("Unpin") { browser.unpin(tab) }
+        }
+        if browser.prefs.tabGroups, tab.pin == nil {
+            Divider()
+            if tab.groupID == nil {
+                Button("Create Tab Group") { browser.createGroup(from: tab) }
+            } else {
+                Button("Remove from Group") { browser.moveOutside(tab) }
+            }
+            if !browser.orderedGroups.isEmpty {
+                Menu("Move to Group") {
+                    ForEach(browser.orderedGroups) { group in
+                        Button(browser.groupTitle(group)) { browser.add(tab, to: group.id) }
+                            .disabled(tab.groupID == group.id)
+                    }
+                }
+            }
         }
         Divider()
         Button("Duplicate") {

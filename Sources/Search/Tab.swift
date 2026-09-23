@@ -243,6 +243,10 @@ final class Tab: ObservableObject, Identifiable {
     /// is all you need for the five or six pages you keep open all day.
     @Published var pin: String?
 
+    /// Membership is temporary for a private tab. Only normal tabs put it
+    /// into the session file.
+    var groupID: UUID?
+
     /// When you last looked at it. The summon lists pages by this, because
     /// what you were just reading is what you are most likely to want back.
     private(set) var touched = Date()
@@ -1309,5 +1313,4 @@ final class ScrollRelay: NSObject, WKScriptMessageHandler {
     })();
     """
 }
-
 

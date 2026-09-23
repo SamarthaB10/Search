@@ -132,6 +132,9 @@ struct WelcomePanel: View {
                     .foregroundStyle(Palette.muted)
                 Segmented(options: Glyph.allCases.map { ($0, $0.title) }, selection: $prefs.glyph)
             }
+            Text("Tab groups are optional. Turn them on in Settings › Tabs to keep related pages together.")
+                .font(.system(size: 12))
+                .foregroundStyle(Palette.muted)
         }
     }
 
