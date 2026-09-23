@@ -1,4 +1,5 @@
 import ImageIO
+import ObjectiveC
 import SwiftUI
 import WebKit
 
@@ -56,6 +57,7 @@ enum Web {
         config.preferences.isElementFullscreenEnabled = true
         config.mediaTypesRequiringUserActionForPlayback = .audio
         if Store.testing, !Store.measuring { config.preferences.inactiveSchedulingPolicy = .none }
+        preferDisplayRefreshRate(config.preferences)
         inspector(config.preferences)
         return config
     }
@@ -72,6 +74,37 @@ enum Web {
         guard preferences.responds(to: set) else { return }
         typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
         unsafeBitCast(preferences.method(for: set), to: Setter.self)(preferences, set, on)
+    }
+
+    private static let near60FPSFeature: NSObject? = {
+        let selector = NSSelectorFromString("_features")
+        guard let method = class_getClassMethod(WKPreferences.self, selector) else { return nil }
+        typealias Features = @convention(c) (AnyObject, Selector) -> NSArray
+        let features = unsafeBitCast(method_getImplementation(method), to: Features.self)(WKPreferences.self, selector)
+        for case let feature as NSObject in features {
+            if feature.value(forKey: "key") as? String == "PreferPageRenderingUpdatesNear60FPSEnabled" {
+                return feature
+            }
+        }
+        return nil
+    }()
+
+    static func prefersNear60FPS(_ preferences: WKPreferences) -> Bool? {
+        guard let feature = near60FPSFeature else { return nil }
+        let selector = NSSelectorFromString("_isEnabledForFeature:")
+        guard preferences.responds(to: selector) else { return nil }
+        typealias Getter = @convention(c) (AnyObject, Selector, AnyObject) -> Bool
+        return unsafeBitCast(preferences.method(for: selector), to: Getter.self)(preferences, selector, feature)
+    }
+
+    /// WebKit enables this limit by default. It has no public switch, so ask
+    /// for the feature only on systems that still provide it.
+    static func preferDisplayRefreshRate(_ preferences: WKPreferences) {
+        guard let feature = near60FPSFeature else { return }
+        let selector = NSSelectorFromString("_setEnabled:forFeature:")
+        guard preferences.responds(to: selector) else { return }
+        typealias Setter = @convention(c) (AnyObject, Selector, Bool, AnyObject) -> Void
+        unsafeBitCast(preferences.method(for: selector), to: Setter.self)(preferences, selector, false, feature)
     }
 }
 
@@ -300,6 +333,9 @@ final class Tab: ObservableObject, Identifiable {
         self.shy = shy
         self.bench = bench
         self.configuration = configuration ?? Web.configuration(shy: shy)
+        // WebKit can supply a configuration for a page opened by a site or an
+        // extension. It did not pass through Web.configuration().
+        if configuration != nil { Web.preferDisplayRefreshRate(self.configuration.preferences) }
     }
 
     private func build() -> PageView {

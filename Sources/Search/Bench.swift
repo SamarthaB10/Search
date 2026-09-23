@@ -407,6 +407,10 @@ final class Bench {
                 guard let preferences = tab.built?.configuration.preferences, preferences.responds(to: asked) else { return nil }
                 return preferences.value(forKey: "developerExtrasEnabled") as? Bool
             }
+            out["prefersNear60FPS"] = browser.tabs.compactMap { tab -> Bool? in
+                guard let preferences = tab.built?.configuration.preferences else { return nil }
+                return Web.prefersNear60FPS(preferences)
+            }
             // The column folded away, out for a look, and the lights with it (see Fold.swift).
             out["folded"] = browser.folded
             out["peeking"] = browser.peeking
