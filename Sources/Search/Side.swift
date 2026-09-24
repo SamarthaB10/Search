@@ -439,14 +439,13 @@ struct SideBar: View {
     private var foot: some View {
         HStack(spacing: 2) {
             if browser.prefs.usesSpaces { SpaceDot(browser: browser) }
-            ExtensionSlot(edge: .trailing)
+            ExtensionSlot(edge: .trailing, showMenu: prefs.extensionButton)
             if browser.prefs.snoozesTabs || !browser.snoozed.isEmpty {
                 SnoozedButton(browser: browser)
             }
-            Door(icon: "bookmark", help: "Bookmarks") { browser.bookmarksOpen.toggle() }
-                .popover(isPresented: $browser.bookmarksOpen, arrowEdge: .trailing) {
-                    BookmarksDropdown(browser: browser, bookmarks: browser.bookmarks)
-                }
+            if prefs.bookmarkButton {
+                BookmarkDoor(browser: browser, edge: .trailing)
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
