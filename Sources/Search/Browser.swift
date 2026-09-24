@@ -9,6 +9,9 @@ import Combine
 @MainActor
 final class Browser: NSObject, ObservableObject {
     @Published private(set) var tabs: [Tab] = []
+    @Published var snoozed: [SnoozedTab] = []
+    @Published var snoozeTarget: Tab?
+    @Published var showingSnoozed = false
     @Published var activeID: Tab.ID? {
         didSet {
             // The tab just left is the tab just looked at. Whether a tab has
@@ -710,6 +713,7 @@ final class Browser: NSObject, ObservableObject {
     /// The minute-by-minute look for tabs to put to sleep, and the ear for
     /// macOS saying memory is short. See Sleep.swift.
     var dozing: Timer?
+    var snoozeAlarm: Timer?
     var pressure: DispatchSourceMemoryPressure?
     /// Downloads still under way. See `keep(_:)`.
     var downloading: [WKDownload] = []
@@ -826,6 +830,7 @@ final class Browser: NSObject, ObservableObject {
         // What a deleted space left behind, if WebKit wouldn't let it go then.
         Spaces.sweep()
         Spaces.sharing = Set(spaces.filter { $0.sharesSignIns == true }.map(\.id))
+        snoozed = SnoozeStore.read().map { SnoozedTab(record: $0, tab: nil) }
         // The space you were in, when there are spaces (see Spaces.swift).
         if prefs.usesSpaces, let last = Store.settings.string(forKey: "space.current").flatMap(UUID.init),
            spaces.contains(where: { $0.id == last }) {
@@ -834,6 +839,10 @@ final class Browser: NSObject, ObservableObject {
         }
         restoreSession()
         if prefs.usesSpaces { preloadSpaces() }
+        DispatchQueue.main.async { [weak self] in
+            self?.restoreDueSnoozes()
+            self?.armSnoozeAlarm()
+        }
     }
 
     /// The row of tabs the space on screen had last time, or one empty tab.
@@ -857,7 +866,7 @@ final class Browser: NSObject, ObservableObject {
             guard let url = URL(string: entry.url) else { continue }
             let tab = Tab()
             prepare(tab)
-            tab.restore(url: url, title: entry.title, name: entry.name)
+            tab.restore(url: url, title: entry.title, name: entry.name, state: entry.state, mediaPosition: entry.mediaPosition)
             tab.pin = entry.pin
             tabs.append(tab)
         }
@@ -1001,7 +1010,9 @@ final class Browser: NSObject, ObservableObject {
                           url.scheme?.hasPrefix("http") == true
                     else { return nil }
                     return Session.Entry(
-                        url: url.absoluteString, title: tab.title, pin: tab.pin, name: tab.name
+                        url: url.absoluteString, title: tab.title, pin: tab.pin, name: tab.name,
+                        state: tab.asleep ? tab.archivedInteractionState() : nil,
+                        mediaPosition: tab.mediaPosition
                     )
                 },
                 active: tabs.firstIndex { $0.id == activeID } ?? 0
@@ -1024,6 +1035,67 @@ final class Browser: NSObject, ObservableObject {
     /// quit, before there is a process left to finish the wait on its behalf.
     func flushSession() {
         writeSession(now: true)
+        SnoozeStore.write(snoozed.map(\.record).filter { !$0.shy })
+    }
+
+    /// Remove a scheduled tab without making it a Recently Closed tab.
+    func removeForSnooze(_ tab: Tab) {
+        guard let index = tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        tabs.remove(at: index)
+        if activeID == tab.id {
+            if tabs.isEmpty {
+                let fresh = Tab()
+                prepare(fresh)
+                tabs = [fresh]
+                activeID = fresh.id
+                editing = true
+                typed = ""
+            } else {
+                activeID = nil
+                select(tabs[min(index, tabs.count - 1)])
+            }
+        }
+        writeSession(now: true)
+    }
+
+    /// Put a due tab back into its space without taking focus from the page.
+    @discardableResult
+    func returnSnoozed(_ item: SnoozedTab) -> Tab? {
+        let record = item.record
+        guard let url = URL(string: record.url), spaces.contains(where: { $0.id == record.spaceID }) else { return nil }
+        if spaceID == record.spaceID || parked[record.spaceID] != nil {
+            let tab: Tab
+            if let live = item.tab {
+                tab = live
+            } else {
+                let config = Web.configuration()
+                config.websiteDataStore = Spaces.store(for: record.spaceID)
+                tab = Tab(configuration: config)
+                tab.restore(url: url, title: record.title, name: record.name, state: record.state, mediaPosition: record.mediaPosition)
+                prepare(tab)
+            }
+            tab.pin = record.pin
+            if record.spaceID == spaceID {
+                tabs.insert(tab, at: min(record.index, tabs.count))
+                writeSession(now: true)
+            } else if var row = parked[record.spaceID] {
+                row.tabs.insert(tab, at: min(record.index, row.tabs.count))
+                parked[record.spaceID] = row
+                let saved = Session.read(space: record.spaceID)
+                var entries = saved.tabs
+                let place = min(record.index, entries.count)
+                entries.insert(.init(url: record.url, title: record.title, pin: record.pin, name: record.name, state: record.state, mediaPosition: record.mediaPosition), at: place)
+                Session.write(now: true, space: record.spaceID, .init(tabs: entries, active: place <= saved.active ? saved.active + 1 : saved.active))
+            }
+            return tab
+        } else {
+            var saved = Session.read(space: record.spaceID)
+            let place = min(record.index, saved.tabs.count)
+            saved.tabs.insert(.init(url: record.url, title: record.title, pin: record.pin, name: record.name, state: record.state, mediaPosition: record.mediaPosition), at: place)
+            if place <= saved.active { saved.active += 1 }
+            Session.write(now: true, space: record.spaceID, saved)
+            return nil
+        }
     }
 
     // MARK: - tabs
@@ -2176,6 +2248,7 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // done, and it is shown.
         (webView as? PageView)?.showFirstFrame()
         guard let tab = tab(for: webView), let url = tab.address else { return }
+        tab.restoreMediaPosition()
         tab.uncover()
         tellStore(tab)
         // A page that arrived after a password went out: did the sign-in take?

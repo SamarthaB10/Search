@@ -123,6 +123,10 @@ struct TabBar: View {
                     .allowsHitTesting(nearby)
                     .animation(Motion.settle, value: nearby)
 
+                    if browser.prefs.snoozesTabs || !browser.snoozed.isEmpty {
+                        SnoozedButton(browser: browser)
+                    }
+
                     Spacer(minLength: 0)
 
                     // Back, forward, reload, and the bookmarks, at the far end
@@ -780,6 +784,17 @@ struct TabMenu: View {
         }
         .disabled(tab.isBlank)
         Button(tab.muted ? "Unmute Tab" : "Mute Tab") { tab.toggleMute() }
+        if browser.prefs.snoozesTabs {
+            Button {
+                browser.snoozeTarget = tab
+            } label: {
+                HStack(spacing: 7) {
+                    LucideSnooze()
+                    Text("Snooze…")
+                }
+            }
+            .disabled(tab.isBlank || tab.bench)
+        }
         Divider()
         Button("Close Tab", action: close)
         Button("Close Other Tabs") { browser.closeOthers(but: tab) }
