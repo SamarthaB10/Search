@@ -255,6 +255,10 @@ struct SettingsPanel: View {
                 Switch(on: $prefs.sleepsTabs)
             }
             Rule()
+            Line("Snooze tabs", "Hide a tab until a time you choose. Find waiting tabs in the Snoozed list.") {
+                Switch(on: $prefs.snoozesTabs)
+            }
+            Rule()
             Line("Spaces", "Separate sets of tabs, signed in where the others are or starting afresh, switched with ⌃1–⌃9, two fingers sideways over the column, or the space's icon. Mission Control's own ⌃1–⌃9, if you turned them on, take those keys first.") {
                 Switch(on: $prefs.usesSpaces)
             }

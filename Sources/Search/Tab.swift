@@ -274,6 +274,7 @@ final class Tab: ObservableObject, Identifiable {
     /// — the back list, the page, where it was scrolled to — handed to the
     /// view built to wake it, so it opens exactly where this one was left.
     private var memory: Any?
+    private(set) var mediaPosition: Double?
     /// The last picture of that page, compressed, for the moment it wakes.
     private var picture: Data?
     /// That picture, over the stage while the page is rebuilt underneath it:
@@ -619,12 +620,87 @@ final class Tab: ObservableObject, Identifiable {
 
     /// Brought back from the last session: everything the row needs to draw it,
     /// and nothing fetched.
-    func restore(url: URL, title: String, name: String? = nil) {
+    func restore(url: URL, title: String, name: String? = nil, state: Data? = nil, mediaPosition: Double? = nil) {
         address = url
         self.title = title
         self.name = name
         pending = url
+        self.mediaPosition = mediaPosition
+        if let state { memory = Tab.unarchive(state) }
         adoptIcon()
+    }
+
+    func captureMediaPosition(_ done: @escaping (Double?) -> Void) {
+        guard let built else { done(nil); return }
+        built.evaluateJavaScript("""
+            (() => {
+              if (document.querySelector('.ad-showing')) return null;
+              const player = document.getElementById('movie_player');
+              return player?.getCurrentTime?.() ?? document.querySelector('video')?.currentTime ?? null;
+            })()
+            """) { value, _ in
+            MainActor.assumeIsolated {
+                if let position = value as? Double, position.isFinite, position >= 0 {
+                    done(position)
+                } else {
+                    done(nil)
+                }
+            }
+        }
+    }
+
+    func keepMediaPosition(_ position: Double?) {
+        mediaPosition = position
+    }
+
+    /// A video page can add its player after navigation finishes. Retry until
+    /// the player is ready, then seek and leave it paused for the person.
+    func restoreMediaPosition() {
+        guard let position = mediaPosition, let built else { return }
+        mediaPosition = nil
+        built.evaluateJavaScript("""
+            (() => {
+              const target = \(position);
+              let tries = 0;
+              let settled = 0;
+              function restore() {
+                const video = document.querySelector('video');
+                if (video && video.readyState >= 1 && !document.querySelector('.ad-showing')) {
+                  const player = document.getElementById('movie_player');
+                  const current = player?.getCurrentTime?.() ?? video.currentTime;
+                  if (Math.abs(current - target) >= 0.25) {
+                    player?.seekTo?.(target, true);
+                    video.currentTime = target;
+                    settled = 0;
+                  } else {
+                    settled++;
+                  }
+                  player?.pauseVideo?.();
+                  video.pause();
+                  if (settled >= 3) return;
+                }
+                if (++tries < 600) setTimeout(restore, 500);
+              }
+              restore();
+            })();
+            """)
+    }
+
+    private static func unarchive(_ data: Data) -> Any? {
+        guard let archive = try? NSKeyedUnarchiver(forReadingFrom: data) else { return nil }
+        archive.requiresSecureCoding = false
+        let state = archive.decodeObject(forKey: NSKeyedArchiveRootObjectKey)
+        archive.finishDecoding()
+        return state
+    }
+
+    /// WebKit's saved page history and scroll position, for a normal snooze
+    /// that must survive an app restart. The page itself is never kept alive.
+    func archivedInteractionState() -> Data? {
+        guard let state = memory ?? built?.interactionState, state is NSCoding else { return nil }
+        guard let data = try? NSKeyedArchiver.archivedData(withRootObject: state, requiringSecureCoding: false),
+              Tab.unarchive(data) != nil else { return nil }
+        return data
     }
 
     /// True for a tab that has a place and an address but is holding no page —
@@ -664,6 +740,7 @@ final class Tab: ObservableObject, Identifiable {
         memory = built.interactionState
         self.picture = picture
         pending = url
+        noisy = false
         stale = false
         pull = nil
         discard()
