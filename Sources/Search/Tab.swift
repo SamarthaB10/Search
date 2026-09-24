@@ -429,6 +429,9 @@ final class Tab: ObservableObject, Identifiable {
         controller.addUserScript(
             WKUserScript(source: FormRelay.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
         )
+        controller.addUserScript(
+            WKUserScript(source: FormRelay.typingScript, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
+        )
         if AutoScroll.on {
             controller.addUserScript(
                 WKUserScript(source: AutoScroll.script, injectionTime: .atDocumentEnd, forMainFrameOnly: true)

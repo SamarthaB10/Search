@@ -62,7 +62,6 @@ struct SearchApp: App {
                 Button(browser.prefs.sidebar
                        ? (browser.folded ? "Show Sidebar" : "Hide Sidebar")
                        : (browser.folded ? "Show Tab Bar" : "Hide Tab Bar")) { browser.toggleFold() }
-                    .keyboardShortcut("s")
                 Picker("Tabs Wear", selection: Binding(
                     get: { browser.prefs.glyph },
                     set: { browser.prefs.glyph = $0 }
@@ -75,12 +74,10 @@ struct SearchApp: App {
                 Button("Reload Page") { browser.reload() }
                     .keyboardShortcut("r")
                 Button("Reading Mode") { browser.toggleReader() }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
                 Button("Float Video") { browser.toggleFloat() }
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                 Divider()
                 Button("Hide Elements…") { browser.toggleHiding() }
-                    .keyboardShortcut("h", modifiers: [.command, .shift])
                 Button("Hidden on This Site…") { browser.reviewing.toggle() }
                     .keyboardShortcut("u", modifiers: [.command, .shift])
                 Divider()
@@ -126,13 +123,11 @@ struct SearchApp: App {
                 Button("Rename Tab") { if let tab = browser.active { browser.beginTabRename(tab) } }
                     .disabled(browser.active == nil)
                 Button("Duplicate Tab") { browser.duplicate() }
-                    .keyboardShortcut("d")
                     .disabled(browser.active?.isBlank ?? true)
                 Button("Copy Address") { browser.copyAddress() }
                     .keyboardShortcut("c", modifiers: [.command, .shift])
                     .disabled(browser.active?.isBlank ?? true)
                 Button("Paste and Go") { browser.pasteAndGo() }
-                    .keyboardShortcut("v", modifiers: [.command, .shift])
                 Divider()
                 Button("Close Other Tabs") { if let tab = browser.active { browser.closeOthers(but: tab) } }
                     .disabled(browser.tabs.count < 2)
@@ -141,7 +136,6 @@ struct SearchApp: App {
             }
             CommandMenu("Bookmarks") {
                 Button("Add This Page") { browser.bookmarkCurrent() }
-                    .keyboardShortcut("b", modifiers: [.command, .shift])
                     .disabled(browser.active?.isBlank ?? true)
                 Button("Show Bookmarks…") { browser.bookmarking = true }
                 // The bookmarks themselves follow, put in by AppKit (see
@@ -623,9 +617,9 @@ struct ContentView: View {
     // MARK: - keys
 
     /// A web view takes first responder and keeps most of the keyboard, so the
-    /// shortcuts are caught before the event ever reaches it. The menu carries
-    /// the same commands for anyone looking for them, and never sees these
-    /// keystrokes because this runs first.
+    /// browser shortcuts are caught before the event reaches it. Commands that
+    /// can belong to an editor have no menu key equivalent: passing one through
+    /// here must also leave it alone during menu dispatch.
     private func watchKeys() {
         guard keys == nil else { return }
         keys = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
@@ -642,6 +636,15 @@ struct ContentView: View {
     static let digits: [UInt16: Int] = [
         18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9, 29: 0,
     ]
+
+    private func editorFocused(_ event: NSEvent) -> Bool {
+        if browser.editing || event.window?.firstResponder is NSTextView { return true }
+        guard browser.active?.typing == true,
+              let page = browser.active?.built,
+              let view = event.window?.firstResponder as? NSView
+        else { return false }
+        return view === page || view.isDescendant(of: page)
+    }
 
     private func take(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
@@ -743,6 +746,19 @@ struct ContentView: View {
         // Anything with ⌥ or ⌃ on top is somebody else's.
         guard !flags.contains(.option), !flags.contains(.control) else { return false }
 
+        // These Search commands are useful on a page, but an editor owns the
+        // same keys while it has the caret. The menu has no equivalents for
+        // them, so returning the event gives it to the editor.
+        if editorFocused(event) {
+            switch (key, shifted) {
+            case ("v", true), ("s", false), ("d", false),
+                 ("r", true), ("b", true), ("h", true):
+                return false
+            default:
+                break
+            }
+        }
+
         // ⌘1 through ⌘9, and ⌘0, by the key rather than the character it
         // types. On AZERTY and many other layouts the top row types &, é, "…
         // unless shift is held, so matching the character left these
@@ -831,8 +847,7 @@ struct ContentView: View {
         default:
             // Moving or selecting text belongs to the editor, not the page's
             // history — in web forms and in the browser's own fields alike.
-            guard !shifted, browser.active?.typing != true,
-                  !(event.window?.firstResponder is NSTextView)
+            guard !shifted, !editorFocused(event)
             else { return false }
             // ⌘← and ⌘→, for hands that never learned the brackets.
             if event.keyCode == 123 { browser.back(); return true }

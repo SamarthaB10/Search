@@ -33,7 +33,6 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
             case "settled":
                 tab?.settleSignIn(navigated: false)
             case "focus":
-                tab?.typing = body["typing"] as? Bool ?? false
                 // Which sign-in box the caret is in, and where it sits on the
                 // page — so a list of accounts can hang from it.
                 if let rect = body["rect"] as? [String: Double],
@@ -42,6 +41,8 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
                 } else {
                     tab?.fieldFocused(nil)
                 }
+            case "typing":
+                tab?.typing = body["typing"] as? Bool ?? false
             case "fullscreen":
                 tab?.immersed = body["on"] as? Bool ?? false
             default:
@@ -210,22 +211,6 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         }, 400);
       }).observe(document.documentElement, { childList: true, subtree: true });
 
-      // Whether the caret is somewhere on the page that takes typing.
-      //
-      // The browser gives Tab to its own row of tabs, which is right until you
-      // are filling something in: plenty of fields offer a completion you take
-      // with Tab, and stealing the key there would make them unusable.
-      function editable(el) {
-        if (!el) return false;
-        var tag = (el.tagName || '').toLowerCase();
-        if (tag === 'textarea') return true;
-        if (el.isContentEditable === true) return true;
-        if (tag !== 'input') return false;
-        var kind = (el.type || 'text').toLowerCase();
-        return ['text', 'search', 'email', 'url', 'tel', 'password', 'number',
-                'date', 'datetime-local', 'month', 'week', 'time'].indexOf(kind) >= 0;
-      }
-
       function caret() {
         var el = document.activeElement;
         var both = pair();
@@ -236,7 +221,6 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
         }
         window.webkit.messageHandlers.officeForms.postMessage({
           kind: 'focus',
-          typing: editable(el),
           rect: rect
         });
       }
@@ -284,6 +268,60 @@ final class FormRelay: NSObject, WKScriptMessageHandler {
       document.addEventListener('focusout', function () { setTimeout(caret, 0); }, true);
       document.addEventListener('mouseup', function () { setTimeout(caret, 0); }, true);
       caret();
+    })();
+    """
+
+    // Each frame reports its own editor focus. A parent accepts only the frame
+    // holding the caret, so an inactive frame cannot change keyboard routing.
+    static let typingScript = """
+    (function () {
+      if (window.__officeSearchFocus) return;
+      window.__officeSearchFocus = true;
+      function editable(el) {
+        if (!el) return false;
+        var tag = (el.tagName || '').toLowerCase();
+        if (tag === 'textarea' || el.isContentEditable === true) return true;
+        if (el.closest && el.closest('[role="textbox"]')) return true;
+        if (tag !== 'input') return false;
+        var kind = (el.type || 'text').toLowerCase();
+        return ['text', 'search', 'email', 'url', 'tel', 'password', 'number',
+                'date', 'datetime-local', 'month', 'week', 'time'].indexOf(kind) >= 0;
+      }
+      function report(typing) {
+        if (window === window.top) {
+          window.webkit.messageHandlers.officeForms.postMessage({ kind: 'typing', typing: typing });
+        } else {
+          window.parent.postMessage({ __officeSearchTyping: true, typing: typing }, '*');
+        }
+      }
+      function tell() {
+        var el = document.activeElement;
+        if (el && (el.tagName || '').toLowerCase() === 'iframe') {
+          if (el.contentWindow) {
+            el.contentWindow.postMessage({ __officeSearchTypingRequest: true }, '*');
+          } else {
+            report(false);
+          }
+          return;
+        }
+        report(editable(el));
+      }
+      window.addEventListener('message', function (event) {
+        if (event.data && event.data.__officeSearchTypingRequest === true) {
+          tell();
+          return;
+        }
+        if (!event.data || event.data.__officeSearchTyping !== true) return;
+        var el = document.activeElement;
+        if (!el || (el.tagName || '').toLowerCase() !== 'iframe'
+            || event.source !== el.contentWindow) return;
+        report(event.data.typing === true);
+      });
+      document.addEventListener('focusin', tell, true);
+      document.addEventListener('focusout', function () { setTimeout(tell, 0); }, true);
+      window.addEventListener('focus', tell);
+      window.addEventListener('blur', function () { report(false); });
+      tell();
     })();
     """
 }

@@ -63,6 +63,8 @@ A **private tab** (`⇧⌘N`) has its own cookie jar and leaves nothing behind w
 
 `⌃Tab` and `⌃⇧Tab` walk along the row of tabs; `Tab` stays the page's, for moving through a form. `esc` puts away whatever is open.
 
+When a page editor or Search text field has the caret, `⇧⌘V`, `⌘S`, `⌘D`, `⇧⌘R`, `⇧⌘B`, and `⇧⌘H` belong to the editor. With no editor focused, they run the Search actions above. `⇧⌘←` and `⇧⌘→` select text; unshifted `⌘←` and `⌘→` move through browser history when no editor is focused.
+
 ---
 
 ## For developers
