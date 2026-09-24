@@ -17,7 +17,7 @@ struct SplitStage: View {
                         emptyPane(except: pending)
                             .frame(width: max(0, (room.size.width - Self.dividerWidth) / 2))
                         Rectangle().fill(Palette.hairline).frame(width: 4).frame(width: Self.dividerWidth)
-                        Page(tab: right)
+                        Page(tab: right, browser: browser)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 } else if room.size.width >= Self.minimumWidth,
@@ -33,7 +33,7 @@ struct SplitStage: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 } else if let tab = browser.active {
-                    Page(tab: tab)
+                    Page(tab: tab, browser: browser)
                 } else {
                     Palette.ground
                 }
@@ -57,7 +57,7 @@ struct SplitStage: View {
     }
 
     private func pane(_ tab: Tab, side: SplitSide) -> some View {
-        Page(tab: tab)
+        Page(tab: tab, browser: browser)
             .overlay {
                 Rectangle()
                     .strokeBorder(tab.id == browser.activeID ? Palette.ink.opacity(0.35) : Palette.hairline, lineWidth: 1)
