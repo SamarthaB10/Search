@@ -14,6 +14,8 @@ struct Page: View {
 
     var body: some View {
         ZStack {
+            if tab.isBlank { WallpaperView() }
+
             // A tab put down with ⌘W has no view, and asking for one here
             // would build an empty one a frame before the stage moves on.
             //

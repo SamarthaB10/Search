@@ -139,6 +139,7 @@ struct SettingsPanel: View {
                     case .privacy: privacy
                     case .about: about
                     }
+                    if page == .tabs { WallpaperSettings(announce: browser.announce) }
                 }
                 .padding(.bottom, 4)
             }
