@@ -36,12 +36,15 @@ enum Vault {
     /// both in one call. Asked for every item's data at once it answers
     /// errSecParam, and it did so quietly enough that for a while this app
     /// saved passwords it could never read back. So: the list first, without
-    /// secrets, then each secret on its own.
+    /// secrets, then each secret on its own. The same authentication context
+    /// must be used for every secret read. Without it, Security creates a new
+    /// context for every item and shows the login-keychain prompt again.
 
     /// What is kept for a host, exactly. See `logins(matching:)` for the
     /// version that also looks across a site's subdomains.
     static func logins(for host: String) -> [Login] {
-        rows(where: [kSecAttrServer as String: host]).compactMap(login(from:))
+        let context = authenticationContext()
+        return logins(from: rows(where: [kSecAttrServer as String: host]), context: context)
     }
 
     /// The keychain matches a server name exactly, and a sign-in rarely lives
@@ -50,18 +53,51 @@ enum Vault {
     /// the host first, then anything sharing its registrable domain.
     static func logins(matching host: String) -> [Login] {
         let domain = registrable(host)
-        let exact = logins(for: host)
-        let wider = rows(where: [:])
-            .filter { ($0[kSecAttrServer as String] as? String).map { $0 != host && registrable($0) == domain } ?? false }
-            .compactMap(login(from:))
-        return (exact + wider).sorted { ($0.used ?? .distantPast) > ($1.used ?? .distantPast) }
+        let context = authenticationContext()
+        let matchingRows = rows(where: [:]).filter {
+            guard let server = $0[kSecAttrServer as String] as? String else { return false }
+            return server == host || registrable(server) == domain
+        }
+        return logins(from: matchingRows, context: context)
+            .sorted { ($0.used ?? .distantPast) > ($1.used ?? .distantPast) }
     }
 
     /// Everything this app holds, for the list. Read on demand and never kept
     /// in a property.
     static func all() -> [Login] {
-        rows(where: [:]).compactMap(login(from:))
+        let context = authenticationContext()
+        return logins(from: rows(where: [:]), context: context)
             .sorted { $0.host == $1.host ? $0.user < $1.user : $0.host < $1.host }
+    }
+
+    /// A keychain query creates its own authentication context unless one is
+    /// supplied. Reusing one context lets macOS apply one approval to the
+    /// complete list, so the password panel closes after one successful answer.
+    private static func authenticationContext() -> LAContext {
+        let context = LAContext()
+        context.localizedReason = "Search needs access to your saved passwords."
+        return context
+    }
+
+    private enum LoginRead {
+        case value(Login)
+        case skipped
+        case denied
+    }
+
+    /// Do not keep querying after authentication fails. Security would create
+    /// another prompt for each remaining item, leaving the password panel
+    /// stuck until the list is exhausted.
+    private static func logins(from rows: [[String: Any]], context: LAContext) -> [Login] {
+        var result: [Login] = []
+        for row in rows {
+            switch login(from: row, context: context) {
+            case .value(let login): result.append(login)
+            case .skipped: continue
+            case .denied: return result
+            }
+        }
+        return result
     }
 
     /// The items' attributes — no secrets — narrowed by whatever is given.
@@ -85,33 +121,51 @@ enum Vault {
     }
 
     /// One item's secret, by the two things that name it.
-    private static func secret(host: String, user: String) -> String? {
+    private enum SecretRead {
+        case value(String)
+        case skipped
+        case denied
+    }
+
+    private static func secret(host: String, user: String, context: LAContext) -> SecretRead {
         var out: CFTypeRef?
-        let status = SecItemCopyMatching([
+        let query: [String: Any] = [
             kSecClass as String: kSecClassInternetPassword,
             kSecAttrLabel as String: label,
             kSecAttrServer as String: host,
             kSecAttrAccount as String: user,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
-        ] as CFDictionary, &out)
+            kSecUseAuthenticationContext as String: context,
+        ]
+        let status = SecItemCopyMatching(query as CFDictionary, &out)
         guard status == errSecSuccess, let data = out as? Data else {
+            if status == errSecAuthFailed || status == errSecUserCanceled || status == errSecInteractionNotAllowed {
+                NSLog("Vault: keychain authentication failed (%d)", status)
+                return .denied
+            }
             if status != errSecItemNotFound { NSLog("Vault: keychain read failed (%d)", status) }
-            return nil
+            return .skipped
         }
-        return String(data: data, encoding: .utf8)
+        guard let value = String(data: data, encoding: .utf8) else { return .skipped }
+        return .value(value)
     }
 
-    private static func login(from row: [String: Any]) -> Login? {
+    private static func login(from row: [String: Any], context: LAContext) -> LoginRead {
         guard let host = row[kSecAttrServer as String] as? String,
-              let user = row[kSecAttrAccount as String] as? String,
-              let password = secret(host: host, user: user)
-        else { return nil }
+              let user = row[kSecAttrAccount as String] as? String
+        else { return .skipped }
+        let password: String
+        switch secret(host: host, user: user, context: context) {
+        case .value(let value): password = value
+        case .skipped: return .skipped
+        case .denied: return .denied
+        }
         // The keychain has no "last used" of its own; it rides in the comment.
         let used = (row[kSecAttrComment as String] as? String)
             .flatMap(Double.init).map(Date.init(timeIntervalSince1970:))
         let clear = (row[kSecAttrProtocol as String] as? String) == (kSecAttrProtocolHTTP as String)
-        return Login(host: host, user: user, password: password, used: used, clear: clear)
+        return .value(Login(host: host, user: user, password: password, used: used, clear: clear))
     }
 
     // MARK: - writing
