@@ -443,10 +443,7 @@ struct SideBar: View {
             if browser.prefs.snoozesTabs || !browser.snoozed.isEmpty {
                 SnoozedButton(browser: browser)
             }
-            Door(icon: "bookmark", help: "Bookmarks") { browser.bookmarksOpen.toggle() }
-                .popover(isPresented: $browser.bookmarksOpen, arrowEdge: .trailing) {
-                    BookmarksDropdown(browser: browser, bookmarks: browser.bookmarks)
-                }
+            BookmarkDoor(browser: browser, arrowEdge: .trailing)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
