@@ -265,6 +265,7 @@ extension Browser {
     /// stays: it is where everything was before there were spaces.
     func deleteSpace(_ id: UUID) {
         guard id != Space.firstID, let at = spaces.firstIndex(where: { $0.id == id }) else { return }
+        discardSnoozes(in: id)
         if spaceID == id { switchSpace(to: Space.firstID) }
         for tab in parked.removeValue(forKey: id)?.tabs ?? [] { tab.close() }
         let shared = spaces[at].sharesSignIns == true

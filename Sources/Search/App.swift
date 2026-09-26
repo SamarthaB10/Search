@@ -438,6 +438,14 @@ struct ContentView: View {
             sheet { SettingsPanel(browser: browser, prefs: browser.prefs) }
                 close: { browser.tuning = false }
         }
+        if let target = browser.snoozeTarget {
+            sheet { SnoozeComposer(browser: browser, tab: target) }
+                close: { browser.snoozeTarget = nil }
+        }
+        if browser.showingSnoozed {
+            sheet { SnoozedPanel(browser: browser) }
+                close: { browser.showingSnoozed = false }
+        }
         if browser.bookmarking {
             sheet { BookmarksPanel(browser: browser, bookmarks: browser.bookmarks) }
                 close: { browser.bookmarking = false }
@@ -506,6 +514,7 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 resting?.isHidden = true
                 browser.appBack()
+                browser.restoreDueSnoozes()
             }
             .onChange(of: browser.fieldShowing) { _, showing in
                 if showing {
@@ -518,6 +527,8 @@ struct ContentView: View {
             .animation(Motion.settle, value: browser.recalling)
             .animation(Motion.settle, value: browser.hoarding)
             .animation(Motion.settle, value: browser.tuning)
+            .animation(Motion.settle, value: browser.snoozeTarget?.id)
+            .animation(Motion.settle, value: browser.showingSnoozed)
             .animation(Motion.settle, value: browser.welcoming)
             .animation(Motion.settle, value: browser.bookmarking)
             .animation(Motion.settle, value: browser.managing)

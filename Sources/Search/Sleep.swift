@@ -31,7 +31,10 @@ extension Browser {
     func watchForSleep() {
         let every = min(60, max(5, Browser.sleepAfter / 4))
         let timer = Timer(timeInterval: every, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.sleepIdle() }
+            MainActor.assumeIsolated {
+                self?.restoreDueSnoozes()
+                self?.sleepIdle()
+            }
         }
         timer.tolerance = every / 4
         RunLoop.main.add(timer, forMode: .common)
