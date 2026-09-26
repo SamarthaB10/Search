@@ -3,6 +3,7 @@ import SwiftUI
 /// Two page hosts when there is room, or the focused page when there is not.
 struct SplitStage: View {
     @ObservedObject var browser: Browser
+    var chrome = PageChrome()
     @State private var choosingTab = false
 
     static let minimumWidth: CGFloat = 560
@@ -17,7 +18,7 @@ struct SplitStage: View {
                         emptyPane(except: pending)
                             .frame(width: max(0, (room.size.width - Self.dividerWidth) / 2))
                         Rectangle().fill(Palette.hairline).frame(width: 4).frame(width: Self.dividerWidth)
-                        Page(tab: right)
+                        Page(tab: right, chrome: rightChrome)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 } else if room.size.width >= Self.minimumWidth,
@@ -33,7 +34,7 @@ struct SplitStage: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 } else if let tab = browser.active {
-                    Page(tab: tab)
+                    Page(tab: tab, chrome: chrome)
                 } else {
                     Palette.ground
                 }
@@ -57,13 +58,17 @@ struct SplitStage: View {
     }
 
     private func pane(_ tab: Tab, side: SplitSide) -> some View {
-        Page(tab: tab)
+        Page(tab: tab, chrome: side == .left ? chrome : rightChrome)
             .overlay {
                 Rectangle()
                     .strokeBorder(tab.id == browser.activeID ? Palette.ink.opacity(0.35) : Palette.hairline, lineWidth: 1)
                     .allowsHitTesting(false)
             }
             .accessibilityLabel("\(side == .left ? "Left" : "Right") split pane: \(tab.label)")
+    }
+
+    private var rightChrome: PageChrome {
+        PageChrome(top: chrome.top, radius: chrome.radius)
     }
 
     private func emptyPane(except right: Tab.ID) -> some View {
