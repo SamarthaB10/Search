@@ -27,6 +27,7 @@ in [ROADMAP.md](ROADMAP.md).
 
 ### Fixed
 
+- Passwords use the same keychain read path as Search, so the macOS login-keychain approval can complete in Search Clone.
 - Extensions put a bookmark where they ask: `chrome.bookmarks.create` and `chrome.bookmarks.move` with an `index` place it there in the folder, where it always went to the end, and a move that names no folder leaves it in the one it is in instead of taking it to the top.
 - Address suggestions cost less with a long history: plain addresses are matched as bytes, and only the best three are kept as the history is scanned. The list is the same. Thanks [@TesterPen0812](https://github.com/TesterPen0812) for measuring it ([#200](https://github.com/driceroland/Search/issues/200))
 - A folded sidebar comes out when the pointer is flung past the window's left edge, not only when it stops on it: with the window away from the screen's edge, a quick reach for the tabs sailed off the window and was never seen at the edge. Once out, it stays out while the pointer overshoots the edge a little and comes back. Just to the left of the window counts only for a pointer that came off the window: one moving about over whatever lies there leaves the sidebar where it is.

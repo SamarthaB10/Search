@@ -358,7 +358,6 @@ final class Browser: NSObject, ObservableObject {
     @Published var managing = false { didSet { if managing { relist() } } }
     @Published private(set) var saved: [Login] = []
     @Published var hunting = ""
-    private var relistGeneration = 0
 
     struct SiteRow {
         let host: String
@@ -377,19 +376,7 @@ final class Browser: NSObject, ObservableObject {
         }
     }
 
-    /// Keychain reads can show a macOS authentication sheet. Keep that work
-    /// off the main actor so the sheet can receive and finish the approval.
-    func relist() {
-        relistGeneration += 1
-        let generation = relistGeneration
-        DispatchQueue.global(qos: .userInitiated).async {
-            let saved = Vault.all()
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.relistGeneration == generation else { return }
-                self.saved = saved
-            }
-        }
-    }
+    func relist() { saved = Vault.all() }
 
     func keep(host: String, user: String, password: String) {
         guard Vault.save(host: host, user: user, password: password) else {
@@ -1816,21 +1803,8 @@ final class Browser: NSObject, ObservableObject {
             // offered only what was kept from plain http too, never an
             // account kept from the https site of the same name.
             let inTheClear = tab.address?.scheme?.lowercased() == "http"
-            let tabID = tab.id
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                let known = Array(Vault.logins(matching: host).filter { !inTheClear || $0.clear }.prefix(5))
-                DispatchQueue.main.async {
-                    guard let self,
-                          self.activeID == tabID,
-                          self.pickedInto != tabID,
-                          let current = self.tabs.first(where: { $0.id == tabID }),
-                          self.curtain.host(of: current.address) == host
-                    else { return }
-                    self.suggesting = known.isEmpty ? nil : Suggesting(
-                        tab: tabID, spot: spot, logins: known, host: host, clear: inTheClear
-                    )
-                }
-            }
+            let known = Array(Vault.logins(matching: host).filter { !inTheClear || $0.clear }.prefix(5))
+            suggesting = known.isEmpty ? nil : Suggesting(tab: tab.id, spot: spot, logins: known, host: host, clear: inTheClear)
         }
 
         tab.onCredentials = { [weak self] tab, host, user, password, clear in
@@ -1840,27 +1814,20 @@ final class Browser: NSObject, ObservableObject {
             // A password manager extension that asked Chrome's way to do the
             // saving itself.
             if #available(macOS 15.4, *), Extensions.shared.passwordSavingTakenBy != nil { return }
-            let tabID = tab.id
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                let known = Vault.logins(for: host)
-                if var same = known.first(where: { $0.user == user && $0.password == password }) {
-                    // Where it was last used is where it is offered from now on.
-                    same.clear = clear
-                    Vault.touch(same)
-                    return
-                }
-                let offer = Offer(
-                    login: Login(host: host, user: user, password: password, used: nil, clear: clear),
-                    changed: known.contains { $0.user == user }
-                )
-                DispatchQueue.main.async {
-                    guard let self,
-                          self.tabs.contains(where: { $0.id == tabID }),
-                          self.offering != offer
-                    else { return }
-                    self.offering = offer
-                }
+            let known = Vault.logins(for: host)
+            // Nothing to ask about one that is already known.
+            if var same = known.first(where: { $0.user == user && $0.password == password }) {
+                // Where it was last used is where it is offered from now on.
+                same.clear = clear
+                Vault.touch(same)
+                return
             }
+            let offer = Offer(
+                login: Login(host: host, user: user, password: password, used: nil, clear: clear),
+                changed: known.contains { $0.user == user }
+            )
+            guard offering != offer else { return }
+            offering = offer
         }
         tab.onPickTrouble = { [weak self] _, reason in
             self?.announce("Couldn't hide that — \(reason)")
