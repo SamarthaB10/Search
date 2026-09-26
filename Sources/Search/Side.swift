@@ -445,7 +445,7 @@ struct SideBar: View {
                 SnoozedButton(browser: browser)
             }
             if prefs.bookmarkButton {
-                BookmarkDoor(browser: browser, edge: .trailing)
+                BookmarkDoor(browser: browser, arrowEdge: .trailing)
             }
             Spacer(minLength: 0)
         }

@@ -147,7 +147,7 @@ struct SearchApp: App {
                     .keyboardShortcut("m", modifiers: [.command, .shift])
             }
             CommandMenu("Bookmarks") {
-                Button("Add This Page") { browser.bookmarkCurrent() }
+                Button(browser.pageKept ? "Edit Bookmark\u{2026}" : "Add This Page") { browser.bookmarkCurrent() }
                     .keyboardShortcut("b", modifiers: [.command, .shift])
                     .disabled(browser.active?.showsPage != true)
                 if browser.prefs.usesDial {
@@ -854,6 +854,10 @@ struct ContentView: View {
             }
             if browser.pendingSplit != nil {
                 browser.pendingSplit = nil
+                return true
+            }
+            if browser.editingBookmark != nil {
+                browser.editingBookmark = nil
                 return true
             }
             if browser.peekTab != nil {

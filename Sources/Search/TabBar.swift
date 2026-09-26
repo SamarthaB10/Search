@@ -141,7 +141,7 @@ struct TabBar: View {
                             Helm(browser: browser).padding(.trailing, 8)
                         }
                         if browser.prefs.bookmarkButton {
-                            BookmarkDoor(browser: browser, edge: .bottom)
+                            BookmarkDoor(browser: browser, arrowEdge: .bottom)
                         }
                     }
                     .background {
@@ -1016,17 +1016,5 @@ struct PinField: NSViewRepresentable {
             let browser = browser
             DispatchQueue.main.async { browser.endPinEdit() }
         }
-    }
-}
-
-/// Shared by both toolbar placements, including the same bookmark popover.
-struct BookmarkDoor: View {
-    @ObservedObject var browser: Browser
-    let edge: Edge
-    var body: some View {
-        Door(icon: "bookmark", help: "Bookmarks") { browser.bookmarksOpen.toggle() }
-            .popover(isPresented: $browser.bookmarksOpen, arrowEdge: edge) {
-                BookmarksDropdown(browser: browser, bookmarks: browser.bookmarks)
-            }
     }
 }
