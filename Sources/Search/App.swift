@@ -293,8 +293,6 @@ struct ContentView: View {
             // again thirty times a second, the page juddered along its right
             // edge and overshot the window with the spring (see `room`).
             // The wallpaper stays at the window's size behind that movement.
-            if let tab = browser.active { WallpaperView(tab: tab) }
-
             stage
                 .padding(.leading, overlayChrome ? 0 : roomed.width)
                 .padding(.top, overlayChrome ? 0 : roomed.height)
@@ -433,7 +431,9 @@ struct ContentView: View {
     /// own whenever a tab has nowhere to be yet.
     @ViewBuilder
     private var field: some View {
-        if browser.fieldShowing, browser.active?.onDial != true {
+        if browser.fieldShowing,
+           browser.active?.onDial != true,
+           !(browser.active?.isBlank == true && browser.visiblePair != nil) {
             Omnibox(browser: browser, over: !(browser.active?.isBlank ?? true))
                 // Centred on the page, not on the window. The column of tabs
                 // is not what the field is standing over, and dimming it along
