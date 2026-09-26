@@ -829,6 +829,10 @@ struct ContentView: View {
                 browser.pendingSplit = nil
                 return true
             }
+            if browser.editingBookmark != nil {
+                browser.editingBookmark = nil
+                return true
+            }
             if browser.peekTab != nil {
                 browser.closePeek()
                 return true
