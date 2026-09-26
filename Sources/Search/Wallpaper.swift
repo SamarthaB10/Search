@@ -19,7 +19,6 @@ final class Wallpaper: ObservableObject {
     @Published private(set) var image: CGImage?
     @Published private(set) var hasImage: Bool
     @Published private(set) var busy = false
-    @Published private(set) var error: String?
 
     private let file: URL
     private let settings: UserDefaults
@@ -31,6 +30,7 @@ final class Wallpaper: ObservableObject {
         enabled = settings.bool(forKey: "wallpaper")
         fit = settings.bool(forKey: "wallpaper.fit")
         hasImage = FileManager.default.fileExists(atPath: file.path)
+        if !hasImage { enabled = false; settings.set(false, forKey: "wallpaper") }
     }
 
     func load() async {
@@ -42,14 +42,13 @@ final class Wallpaper: ObservableObject {
         let result = await Task.detached(priority: .utility) {
             try? Self.read(file)
         }.value
+        guard let result else { enabled = false; return }
         if enabled { image = result }
-        if result == nil { error = "Couldn't open the saved image. Choose another." }
     }
 
     func use(_ source: URL) async {
         guard !busy else { return }
         busy = true
-        error = nil
         defer { busy = false }
         let file = file
         do {
@@ -59,9 +58,9 @@ final class Wallpaper: ObservableObject {
                 let image = try Self.read(source)
                 let data = NSMutableData()
                 guard let output = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil)
-                else { throw Failure.unreadable }
+                else { throw Failure.invalid }
                 CGImageDestinationAddImage(output, image, nil)
-                guard CGImageDestinationFinalize(output) else { throw Failure.unreadable }
+                guard CGImageDestinationFinalize(output) else { throw Failure.invalid }
                 try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
                 // Commit only a decoded copy; a failed replacement leaves the old image intact.
                 try (data as Data).write(to: file, options: .atomic)
@@ -72,14 +71,14 @@ final class Wallpaper: ObservableObject {
             loaded = true
             enabled = true
         } catch {
-            self.error = "Couldn't use that image. \(error.localizedDescription)"
+            enabled = false
         }
     }
 
     func remove() async {
         guard !busy else { return }
         busy = true
-        error = nil
+        enabled = false
         defer { busy = false }
         let file = file
         do {
@@ -88,28 +87,25 @@ final class Wallpaper: ObservableObject {
                     try FileManager.default.removeItem(at: file)
                 }
             }.value
-            enabled = false
             hasImage = false
             fit = false
-        } catch {
-            self.error = "Couldn't remove the saved image. Try again."
-        }
+        } catch { return }
     }
 
     nonisolated private static func read(_ url: URL) throws -> CGImage {
         let size = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-        guard size.isRegularFile == true else { throw Failure.unreadable }
-        guard let bytes = size.fileSize, bytes <= 50 * 1024 * 1024 else { throw Failure.large }
+        guard size.isRegularFile == true else { throw Failure.invalid }
+        guard let bytes = size.fileSize, bytes <= 50 * 1024 * 1024 else { throw Failure.invalid }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
               let type = CGImageSourceGetType(source) as String?,
               [UTType.jpeg, .png, .heic, .heif].contains(where: { $0.identifier == type }),
               CGImageSourceGetCount(source) == 1
-        else { throw Failure.format }
+        else { throw Failure.invalid }
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = properties[kCGImagePropertyPixelWidth] as? Double,
               let height = properties[kCGImagePropertyPixelHeight] as? Double,
               width > 0, height > 0, width * height <= 100_000_000
-        else { throw Failure.large }
+        else { throw Failure.invalid }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -121,21 +117,13 @@ final class Wallpaper: ObservableObject {
               let context = CGContext(data: nil, width: thumbnail.width, height: thumbnail.height,
                                       bitsPerComponent: 8, bytesPerRow: 0, space: color,
                                       bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-        else { throw Failure.unreadable }
+        else { throw Failure.invalid }
         context.draw(thumbnail, in: CGRect(x: 0, y: 0, width: thumbnail.width, height: thumbnail.height))
-        guard let image = context.makeImage() else { throw Failure.unreadable }
+        guard let image = context.makeImage() else { throw Failure.invalid }
         return image
     }
 
-    private enum Failure: LocalizedError {
-        case format, large, unreadable
-
-        var errorDescription: String? {
-            switch self {
-            case .format: return "Choose a still JPEG, PNG or HEIC image."
-            case .large: return "Choose an image under 50 MB and 100 megapixels."
-            case .unreadable: return "The file couldn't be read as an image."
-            }
-        }
+    private enum Failure: Error {
+        case invalid
     }
 }

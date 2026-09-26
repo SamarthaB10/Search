@@ -2,11 +2,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct WallpaperView: View {
+    @ObservedObject var tab: Tab
     @ObservedObject private var wallpaper = Wallpaper.shared
 
     var body: some View {
         GeometryReader { area in
-            if wallpaper.enabled, let image = wallpaper.image {
+            if tab.isBlank, wallpaper.enabled, let image = wallpaper.image {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .aspectRatio(contentMode: wallpaper.fit ? .fit : .fill)
@@ -16,12 +17,13 @@ struct WallpaperView: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .task(id: wallpaper.enabled) { await wallpaper.load() }
+        .task(id: tab.isBlank && wallpaper.enabled) {
+            if tab.isBlank { await wallpaper.load() }
+        }
     }
 }
 
 struct WallpaperSettings: View {
-    let announce: (String) -> Void
     @ObservedObject private var wallpaper = Wallpaper.shared
     @State private var choosing = false
 
@@ -37,10 +39,7 @@ struct WallpaperSettings: View {
                         Pill(wallpaper.hasImage ? "Change…" : "Choose…") { choose() }
                         if wallpaper.hasImage {
                             Pill("Remove") {
-                                Task {
-                                    await wallpaper.remove()
-                                    if let error = wallpaper.error { announce(error) }
-                                }
+                                Task { await wallpaper.remove() }
                             }
                         }
                     }
@@ -48,15 +47,9 @@ struct WallpaperSettings: View {
             }
             if wallpaper.enabled, wallpaper.hasImage {
                 Rule()
-                Line("Layout", wallpaper.fit ? "Show the whole picture" : "Fill the page without stretching") {
+                Line("Layout", wallpaper.fit ? "Fit the picture to the window" : "Fill the window without stretching") {
                     Segmented(options: [(false, "Fill"), (true, "Fit")], selection: $wallpaper.fit)
                 }
-            }
-            if let error = wallpaper.error {
-                Text(error)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Palette.muted)
-                    .padding(14)
             }
         }
         .disabled(wallpaper.busy || choosing)
@@ -79,10 +72,7 @@ struct WallpaperSettings: View {
                 if !wallpaper.hasImage { wallpaper.enabled = false }
                 return
             }
-            Task {
-                await wallpaper.use(url)
-                if let error = wallpaper.error { announce(error) }
-            }
+            Task { await wallpaper.use(url) }
         }
     }
 }
