@@ -2252,6 +2252,11 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
     ) -> WKWebView? {
         // A page can't open a window onto Speed Dial either (see above).
         if let url = action.request.url, SpeedDial.at(url) { return nil }
+        // OAuth sign-in buttons can call window.open after an async request,
+        // which needs automatic windows enabled in WebKit. Keep that change
+        // scoped to authentication and links opened by the user.
+        let userOpened = action.navigationType == .linkActivated || action.navigationType == .formSubmitted
+        guard userOpened || authenticationPopup(action.request.url) else { return nil }
         let from = tab(for: webView)?.id ?? activeID
         // WebKit's copy of the opener's configuration still holds the
         // opener's user content controller — its scripts and its message
@@ -2271,6 +2276,14 @@ extension Browser: WKNavigationDelegate, WKUIDelegate {
         // request into it itself when the action carries one.
         if let url = action.request.url { tab.setAddressOptimistically(url) }
         return tab.web
+    }
+
+    private func authenticationPopup(_ url: URL?) -> Bool {
+        guard let host = url?.host()?.lowercased() else { return false }
+        return host == "accounts.google.com"
+            || host.hasSuffix(".accounts.google.com")
+            || host == "auth.openai.com"
+            || host.hasSuffix(".auth.openai.com")
     }
 
     /// Anything the window can't show is something to keep instead.

@@ -58,7 +58,12 @@ struct SplitStage: View {
     }
 
     private func pane(_ tab: Tab, side: SplitSide) -> some View {
-        Page(tab: tab, browser: browser, chrome: side == .left ? chrome : rightChrome)
+        ZStack {
+            Page(tab: tab, browser: browser, chrome: side == .left ? chrome : rightChrome)
+            if tab.isBlank, tab.id == browser.activeID, browser.fieldShowing {
+                Omnibox(browser: browser, over: false)
+            }
+        }
             .overlay {
                 Rectangle()
                     .strokeBorder(tab.id == browser.activeID ? Palette.ink.opacity(0.35) : Palette.hairline, lineWidth: 1)
