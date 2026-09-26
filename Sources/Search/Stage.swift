@@ -11,6 +11,7 @@ import WebKit
 /// what turns that into a redraw.
 struct Page: View {
     @ObservedObject var tab: Tab
+    var browser: Browser
     var chrome = PageChrome()
 
     var body: some View {
@@ -22,7 +23,11 @@ struct Page: View {
             // before and after the float changes nothing SwiftUI can see, so
             // the stage was never told to take it back when it landed, and
             // the tab stayed empty. Nothing, then the page, is a change.
-            WebStage(page: tab.isBlank || tab.asleep || tab.floating ? nil : tab.web, chrome: chrome)
+            WebStage(page: tab.isBlank || tab.onDial || tab.asleep || tab.floating ? nil : tab.web, chrome: chrome)
+
+            if tab.onDial {
+                SpeedDialPage(browser: browser, dial: browser.speedDial)
+            }
 
             if let cover = tab.cover {
                 // The page as it was left, while it is rebuilt underneath —
