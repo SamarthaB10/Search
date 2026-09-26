@@ -13,6 +13,7 @@ in [ROADMAP.md](ROADMAP.md).
 
 ### Added
 
+- Settings › Appearance adds adjustable bar height (30–52 points), page-backed transparency, independent blur strength, and selected-tab accent colors, including Match page. The default stays opaque and full-height; macOS Reduce Transparency is respected.
 - An optional image on new tabs, in Settings › Tabs. Choose your own picture, fill or fit it to the page, or remove it. Search keeps a local copy, so moving the original won't lose it. Off by default. ([#288](https://github.com/driceroland/Search/issues/288))
 - Split view shows two tabs side by side. Turn it on in Settings › Tabs, choose Split Tab from a tab's menu, then drag or choose a second tab. Drag the divider to resize; Unsplit keeps both tabs open. Pairs return when you select either tab or restart Search. ([#277](https://github.com/driceroland/Search/issues/277))
 - ⇧⌘B keeps the page and opens a small card off the bookmark button, to give it another name or file it in a folder, a new one included, or take it back with Remove. On a page already kept, ⇧⌘B opens the same card, and the button is filled. With the tabs folded away it says "Bookmarked", as before.
